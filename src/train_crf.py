@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from src.crf import CRFNER
-from src.preprocess import build_sentence_examples, load_conll_csv, train_valid_split_balanced
+from src.preprocess import build_sentence_examples, load_csv, train_valid_split_balanced
 from src.metrics import entity_level_prf1
 
 
 def main() -> None:
-    df = load_conll_csv("data/train.csv", has_labels=True)
+    df = load_csv("data/train.csv", has_labels=True)
     examples = build_sentence_examples(df, has_labels=True)
 
     train_examples, valid_examples = train_valid_split_balanced(

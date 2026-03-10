@@ -39,9 +39,6 @@ data/*.bz2
 data/*.7z
 
 outputs/models/
-outputs/figures/
-outputs/*.csv
-outputs/*.json
 outputs/*.pt
 outputs/*.bin
 outputs/*.safetensors

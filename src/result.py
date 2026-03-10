@@ -5,7 +5,7 @@ import torch
 from datasets import Dataset
 from transformers import AutoModelForTokenClassification, AutoTokenizer
 
-from src.preprocess import ID2TAG, TAG2ID, build_sentence_examples, load_conll_csv
+from src.preprocess import ID2TAG, TAG2ID, build_sentence_examples, load_csv
 
 
 def predict_test_tags(
@@ -61,7 +61,7 @@ def predict_test_tags(
 
 
 def main() -> None:
-    df_test = load_conll_csv("data/test.csv", has_labels=False)
+    df_test = load_csv("data/test.csv", has_labels=False)
     test_examples = build_sentence_examples(df_test, has_labels=False)
 
     pred_seqs = predict_test_tags(

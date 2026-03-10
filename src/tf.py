@@ -188,7 +188,7 @@ class TransformerNER:
 
         self._build_trainer(train_tok=None, valid_tok=None)
 
-    def predict(self, examples: List[SentenceExample]) -> List[List[str]]:
+    def predict(self, examples):
         import torch
 
         if self.trainer is None:
@@ -197,7 +197,7 @@ class TransformerNER:
         self.model.eval()
         device = next(self.model.parameters()).device
 
-        all_preds: List[List[str]] = []
+        all_preds = []
 
         for ex in tqdm(
             examples,
@@ -218,23 +218,24 @@ class TransformerNER:
 
             pred_ids = outputs.logits.argmax(dim=-1)[0].detach().cpu().tolist()
 
-            word_ids = self.tokenizer(
+            enc_no_tensors = self.tokenizer(
                 ex.tokens,
                 truncation=True,
                 is_split_into_words=True,
                 max_length=self.config.max_length,
-            ).word_ids()
+            )
+            word_ids = enc_no_tensors.word_ids()
 
-            seq_preds = []
-            prev_word_idx = None
+            seq_preds = ["O"] * len(ex.tokens)
 
+            seen = set()
             for token_idx, word_idx in enumerate(word_ids):
                 if word_idx is None:
                     continue
-                if word_idx != prev_word_idx:
-                    seq_preds.append(ID2TAG[int(pred_ids[token_idx])])
-                prev_word_idx = word_idx
+                if word_idx not in seen:
+                    seq_preds[word_idx] = ID2TAG[int(pred_ids[token_idx])]
+                    seen.add(word_idx)
 
-            all_preds.append(seq_preds[: len(ex.tokens)])
+            all_preds.append(seq_preds)
 
         return all_preds

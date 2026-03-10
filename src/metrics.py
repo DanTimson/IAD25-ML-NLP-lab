@@ -4,10 +4,6 @@ from typing import List, Tuple
 
 
 def extract_entities(tags: List[str]) -> List[Tuple[str, int, int]]:
-    """
-    Convert token-level IOB2 tags to spans:
-    returns list of (entity_type, start_idx, end_idx_inclusive)
-    """
     entities = []
     start = None
     ent_type = None

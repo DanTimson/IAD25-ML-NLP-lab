@@ -74,25 +74,14 @@ def fix_iob2(tags: List[str]) -> List[str]:
     return fixed
 
 
-def load_conll_csv(path: str, has_labels: bool = True) -> pd.DataFrame:
-    """
-    Reads the lab CSV and reconstructs Sentence_id by forward filling.
-    Expected columns:
-      unnamed index, Sentence_id, Word, POS, Tag
-    """
+def load_csv(path: str, has_labels: bool = True) -> pd.DataFrame:
+    
     df = pd.read_csv(path)
 
-    # Standardize accidental unnamed column
     if df.columns[0].startswith("Unnamed") or df.columns[0] == "":
         df = df.rename(columns={df.columns[0]: "row_id"})
     else:
-        # keep original row index as row_id if none provided
         df = df.reset_index(names="row_id")
-
-    if "Sentence_id" not in df.columns:
-        raise ValueError("Column 'Sentence_id' not found.")
-    if "Word" not in df.columns or "POS" not in df.columns:
-        raise ValueError("Columns 'Word' and/or 'POS' not found.")
 
     df["Sentence_id"] = df["Sentence_id"].ffill()
     df["Sentence_id"] = df["Sentence_id"].astype(int)
@@ -101,13 +90,8 @@ def load_conll_csv(path: str, has_labels: bool = True) -> pd.DataFrame:
     df["POS"] = df["POS"].fillna("UNK").astype(str)
 
     if has_labels:
-        if "Tag" not in df.columns:
-            raise ValueError("Column 'Tag' not found for labeled dataset.")
         df["Tag"] = df["Tag"].astype(int)
         df["Tag_str"] = df["Tag"].map(ID2TAG)
-        if df["Tag_str"].isna().any():
-            bad = sorted(df.loc[df["Tag_str"].isna(), "Tag"].unique().tolist())
-            raise ValueError(f"Unknown tag ids found: {bad}")
 
     return df
 
@@ -122,7 +106,7 @@ def build_sentence_examples(df: pd.DataFrame, has_labels: bool = True) -> List[S
 
         if has_labels:
             ner_tags = group["Tag_str"].tolist()
-            ner_tags = fix_iob2(ner_tags)
+            # ner_tags = fix_iob2(ner_tags)
         else:
             ner_tags = None
 
