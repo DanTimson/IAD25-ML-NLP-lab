@@ -1,0 +1,15 @@
+torch
+datasets
+huggingface_hub
+jupyter
+joblib
+matplotlib
+numpy
+networkx
+pandas
+packaging
+scikit-learn
+scipy
+setuptools
+sklearn-crfsuite
+tqdm
