@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 
 from src.preprocess import build_sentence_examples, load_csv, train_valid_split_balanced
 from src.tf import TransformerConfig, TransformerNER

@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -106,7 +106,7 @@ def build_sentence_examples(df: pd.DataFrame, has_labels: bool = True) -> List[S
 
         if has_labels:
             ner_tags = group["Tag_str"].tolist()
-            # ner_tags = fix_iob2(ner_tags)
+            ner_tags = fix_iob2(ner_tags)
         else:
             ner_tags = None
 
@@ -121,7 +121,6 @@ def build_sentence_examples(df: pd.DataFrame, has_labels: bool = True) -> List[S
         )
 
     return examples
-
 
 # def train_valid_split(
 #     examples: List[SentenceExample],
