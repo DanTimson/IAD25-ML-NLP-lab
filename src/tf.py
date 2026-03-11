@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+import torch
 import numpy as np
 from datasets import Dataset
 from transformers import (
@@ -22,7 +21,7 @@ from tqdm.auto import tqdm
 class TransformerConfig:
     model_name: str = "distilbert-base-cased"
     max_length: int = 128
-    output_dir: str = "outputs/distilbert_ner"
+    output_dir: str = "outputs/models/distilbert_checkpoint"
     learning_rate: float = 2e-5
     train_batch_size: int = 16
     eval_batch_size: int = 16
@@ -81,27 +80,7 @@ class TransformerNER:
         tokenized["labels"] = labels
         return tokenized
 
-    def _build_trainer(self, train_tok=None, valid_tok=None) -> Trainer:
-        data_collator = DataCollatorForTokenClassification(tokenizer=self.tokenizer)
-
-        args = TrainingArguments(
-            output_dir=self.config.output_dir,
-            eval_strategy="epoch" if valid_tok is not None else "no",
-            save_strategy="epoch" if valid_tok is not None else "no",
-            learning_rate=self.config.learning_rate,
-            per_device_train_batch_size=self.config.train_batch_size,
-            per_device_eval_batch_size=self.config.eval_batch_size,
-            num_train_epochs=self.config.num_train_epochs,
-            weight_decay=self.config.weight_decay,
-            load_best_model_at_end=valid_tok is not None,
-            metric_for_best_model="f1" if valid_tok is not None else None,
-            greater_is_better=True if valid_tok is not None else None,
-            save_total_limit=2,
-            report_to="none",
-            disable_tqdm=not self.config.show_progress,
-        )
-
-        def compute_metrics(eval_pred):
+    def _compute_metrics(self, eval_pred):
             logits, labels = eval_pred
             predictions = np.argmax(logits, axis=-1)
 
@@ -128,11 +107,33 @@ class TransformerNER:
                 "f1": scores["f1"],
             }
 
+    def _build_trainer(self, train_tok=None, valid_tok=None) -> Trainer:
+        data_collator = DataCollatorForTokenClassification(tokenizer=self.tokenizer)
+
+        args = TrainingArguments(
+            output_dir=self.config.output_dir,
+            eval_strategy="epoch" if valid_tok is not None else "no",
+            save_strategy="epoch" if valid_tok is not None else "no",
+            learning_rate=self.config.learning_rate,
+            per_device_train_batch_size=self.config.train_batch_size,
+            per_device_eval_batch_size=self.config.eval_batch_size,
+            num_train_epochs=self.config.num_train_epochs,
+            weight_decay=self.config.weight_decay,
+            load_best_model_at_end=valid_tok is not None,
+            metric_for_best_model="f1" if valid_tok is not None else None,
+            greater_is_better=True if valid_tok is not None else None,
+            save_total_limit=2,
+            report_to="none",
+            disable_tqdm=not self.config.show_progress,
+            warmup_steps=100,
+            adam_epsilon=1e-6,
+        )
+
         trainer_kwargs = dict(
             model=self.model,
             args=args,
             data_collator=data_collator,
-            compute_metrics=compute_metrics if valid_tok is not None else None,
+            compute_metrics=self._compute_metrics if valid_tok is not None else None,
         )
 
         if train_tok is not None:
@@ -178,8 +179,6 @@ class TransformerNER:
         self.tokenizer.save_pretrained(save_dir)
 
     def load(self, checkpoint_dir: str) -> None:
-        import torch
-
         self.tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
         self.model = AutoModelForTokenClassification.from_pretrained(checkpoint_dir)
 
@@ -189,8 +188,6 @@ class TransformerNER:
         self._build_trainer(train_tok=None, valid_tok=None)
 
     def predict(self, examples):
-        import torch
-
         if self.trainer is None:
             self._build_trainer(train_tok=None, valid_tok=None)
 
@@ -211,24 +208,16 @@ class TransformerNER:
                 max_length=self.config.max_length,
                 return_tensors="pt",
             )
-            enc = {k: v.to(device) for k, v in enc.items()}
 
+            model_inputs = {k: v.to(device) for k, v in enc.items()}
             with torch.no_grad():
-                outputs = self.model(**enc)
+                outputs = self.model(**model_inputs)
 
             pred_ids = outputs.logits.argmax(dim=-1)[0].detach().cpu().tolist()
-
-            enc_no_tensors = self.tokenizer(
-                ex.tokens,
-                truncation=True,
-                is_split_into_words=True,
-                max_length=self.config.max_length,
-            )
-            word_ids = enc_no_tensors.word_ids()
-
+            word_ids = enc.word_ids(batch_index=0)
             seq_preds = ["O"] * len(ex.tokens)
-
             seen = set()
+
             for token_idx, word_idx in enumerate(word_ids):
                 if word_idx is None:
                     continue

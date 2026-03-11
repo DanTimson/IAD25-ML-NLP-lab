@@ -13,3 +13,9 @@ scipy
 setuptools
 sklearn-crfsuite
 tqdm
+transformers
+wordcloud
+sentencepiece
+tiktoken
+protobuf
+accelerate

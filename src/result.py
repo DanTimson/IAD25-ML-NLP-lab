@@ -1,10 +1,6 @@
-from __future__ import annotations
-
 import pandas as pd
 import torch
-from datasets import Dataset
 from transformers import AutoModelForTokenClassification, AutoTokenizer
-
 from src.preprocess import ID2TAG, TAG2ID, build_sentence_examples, load_csv
 
 

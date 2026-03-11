@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 from typing import List, Tuple
-
 from src.preprocess import SentenceExample
 from src.entity import EntityStore
 from tqdm.auto import tqdm

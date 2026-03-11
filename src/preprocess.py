@@ -1,11 +1,13 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Dict, List, Optional
-
+from collections import Counter
 import pandas as pd
+import random
+import copy
+import math
 
-
+# Теги в train.csv заданы, как числа, так что преобразуем их по коду
+# из раздела Data в соревновании на кегле
 ID2TAG: Dict[int, str] = {
     0: "O",
     1: "B-per",
@@ -37,55 +39,59 @@ class SentenceExample:
     ner_tags: Optional[List[str]] = None
 
 
-def fix_iob2(tags: List[str]) -> List[str]:
-    """
-    Repair invalid IOB2 sequences:
-    O -> I-x becomes B-x
-    B-a -> I-b becomes B-b
-    """
-    fixed: List[str] = []
-    prev_tag = "O"
+# Аугментируем тупым образом данные (через копирование)
+def statistical_oversample(train_examples: List[SentenceExample], max_duplicates: int = 15) -> List[SentenceExample]:
+    entity_counts = Counter()
+    for ex in train_examples:
+        if ex.ner_tags:
+            for tag in ex.ner_tags:
+                if tag.startswith("B-"):
+                    entity_counts[tag] += 1
 
-    for tag in tags:
-        if tag == "O":
-            fixed.append(tag)
-            prev_tag = tag
-            continue
+    if not entity_counts:
+        return train_examples
 
-        prefix, ent = tag.split("-", 1)
+    max_count = max(entity_counts.values())
 
-        if prefix == "B":
-            fixed.append(tag)
-            prev_tag = tag
-            continue
+    class_weights = {}
+    for tag, count in entity_counts.items():
+        class_weights[tag] = min(max_count / count, max_duplicates)
 
-        # prefix == "I"
-        if prev_tag == "O":
-            fixed.append(f"B-{ent}")
+    augmented_data = []
+    random.seed(42)
+
+    for ex in train_examples:
+        if not ex.ner_tags or all(t == "O" for t in ex.ner_tags):
+            sentence_weight = 1.0
         else:
-            prev_prefix, prev_ent = prev_tag.split("-", 1)
-            if prev_ent != ent:
-                fixed.append(f"B-{ent}")
-            else:
-                fixed.append(tag)
+            weights_in_sentence = [class_weights[t] for t in ex.ner_tags if t.startswith("B-")]
+            sentence_weight = max(weights_in_sentence) if weights_in_sentence else 1.0
 
-        prev_tag = fixed[-1]
+        n_copies = int(math.floor(sentence_weight))
+        for _ in range(n_copies):
+            augmented_data.append(copy.deepcopy(ex))
 
-    return fixed
+    random.shuffle(augmented_data)
+    return augmented_data
 
 
 def load_csv(path: str, has_labels: bool = True) -> pd.DataFrame:
-    
     df = pd.read_csv(path)
 
+    # если был кривой импорт, фиксим
     if df.columns[0].startswith("Unnamed") or df.columns[0] == "":
         df = df.rename(columns={df.columns[0]: "row_id"})
     else:
         df = df.reset_index(names="row_id")
 
+    # для каждого следующего слова тянем Sentence_id вниз,
+    # пока не появится новое значение
+    # т.к. в датасете у нас пустые места проставлены для всех
+    # слов, кроме первого
     df["Sentence_id"] = df["Sentence_id"].ffill()
     df["Sentence_id"] = df["Sentence_id"].astype(int)
 
+    # для пропавших слов просто заполняем неизвестным
     df["Word"] = df["Word"].fillna("").astype(str)
     df["POS"] = df["POS"].fillna("UNK").astype(str)
 
@@ -99,16 +105,16 @@ def load_csv(path: str, has_labels: bool = True) -> pd.DataFrame:
 def build_sentence_examples(df: pd.DataFrame, has_labels: bool = True) -> List[SentenceExample]:
     examples: List[SentenceExample] = []
 
+    # собираем предложения отдельно в примеры для обучения
+    # группируем слова по предложениям, потом просто распихиваем в датакласс
     for sid, group in df.groupby("Sentence_id", sort=True):
         row_ids = group["row_id"].tolist()
         tokens = group["Word"].tolist()
         pos_tags = group["POS"].tolist()
 
+        ner_tags = None
         if has_labels:
             ner_tags = group["Tag_str"].tolist()
-            # ner_tags = fix_iob2(ner_tags)
-        else:
-            ner_tags = None
 
         examples.append(
             SentenceExample(
@@ -123,33 +129,16 @@ def build_sentence_examples(df: pd.DataFrame, has_labels: bool = True) -> List[S
     return examples
 
 
-# def train_valid_split(
-#     examples: List[SentenceExample],
-#     valid_size: float = 0.2,
-#     random_state: int = 42,
-# ) -> tuple[List[SentenceExample], List[SentenceExample]]:
-#     import random
-
-#     rng = random.Random(random_state)
-#     items = examples[:]
-#     rng.shuffle(items)
-
-#     split_idx = int(len(items) * (1.0 - valid_size))
-#     train_examples = items[:split_idx]
-#     valid_examples = items[split_idx:]
-
-#     return train_examples, valid_examples
-
 def train_valid_split_balanced(
     examples,
     valid_size: float = 0.2,
     random_state: int = 42,
 ):
-    import random
-
     rng = random.Random(random_state)
 
+    # собираем примеры, которые содержат хотя бы одну сущность
     with_entities = [x for x in examples if any(tag != "O" for tag in (x.ner_tags or []))]
+    # примеры без сущностей
     without_entities = [x for x in examples if all(tag == "O" for tag in (x.ner_tags or []))]
 
     rng.shuffle(with_entities)
@@ -158,6 +147,7 @@ def train_valid_split_balanced(
     split_with = int(len(with_entities) * (1.0 - valid_size))
     split_without = int(len(without_entities) * (1.0 - valid_size))
 
+    # Берём равномерно от каждого типа примеров по 80/20 данных
     train_examples = with_entities[:split_with] + without_entities[:split_without]
     valid_examples = with_entities[split_with:] + without_entities[split_without:]
 

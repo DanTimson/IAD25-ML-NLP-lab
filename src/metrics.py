@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 from typing import List, Tuple
-
 
 def extract_entities(tags: List[str]) -> List[Tuple[str, int, int]]:
     entities = []

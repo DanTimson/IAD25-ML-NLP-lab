@@ -1,14 +1,11 @@
-from __future__ import annotations
-
 from typing import Dict, List
-
 import joblib
 import sklearn_crfsuite
-
 from src.preprocess import SentenceExample
 from tqdm.auto import tqdm
 
 
+# Просто набираем разные фичи, которые могут нам как-то помочь в дальнейшем
 def word2features(tokens: List[str], pos_tags: List[str], i: int) -> Dict[str, object]:
     word = tokens[i]
     pos = pos_tags[i]
